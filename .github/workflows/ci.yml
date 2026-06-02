@@ -1,4 +1,4 @@
-name: Java CI
+name: Java CI/CD
 
 on:
   push:
@@ -19,8 +19,17 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Build and Run Tests
-        run: mvn clean verify
+      - name: Compile and Build
+        run: mvn clean compile
+
+      - name: Run Unit Tests
+        run: mvn test
+
+      - name: Generate JaCoCo Coverage
+        run: mvn jacoco:report
+
+      - name: Package Application
+        run: mvn package -DskipTests
 
       - name: Upload JaCoCo Report
         uses: actions/upload-artifact@v4
@@ -33,3 +42,12 @@ jobs:
         with:
           name: springboot-jar
           path: target/*.jar
+
+      - name: Deploy
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Starting Deployment..."
+          mkdir deployment
+          cp target/*.jar deployment/
+          ls -la deployment
+          echo "Deployment Successful"
