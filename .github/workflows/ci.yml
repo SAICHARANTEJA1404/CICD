@@ -1,75 +1,36 @@
-name: Java CI/CD
+- name: Deploy WAR to Tomcat
+  shell: powershell
+  run: |
+    $tomcatHome = "D:\Softwares\apache-tomcat-11.0.22"
+    $webapps = "$tomcatHome\webapps"
 
-on:
-  push:
-    branches:
-      - main
+    $warFile = ".\cicd.war"
+    $targetWar = "$webapps\cicd.war"
+    $explodedFolder = "$webapps\cicd"
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+    if (!(Test-Path $warFile)) {
+        Write-Error "WAR file not found: $warFile"
+        exit 1
+    }
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    Write-Host "Stopping Tomcat..."
+    & "$tomcatHome\bin\shutdown.bat"
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+    Start-Sleep -Seconds 10
 
-      - name: Cache Maven dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+    Write-Host "Removing old deployment..."
+    if (Test-Path $targetWar) {
+        Remove-Item $targetWar -Force
+    }
 
-      - name: Build, Test & Package
-        run: mvn verify
+    if (Test-Path $explodedFolder) {
+        Remove-Item $explodedFolder -Recurse -Force
+    }
 
-      - name: Upload JaCoCo Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco
+    Write-Host "Copying new WAR..."
+    Copy-Item $warFile $targetWar -Force
 
-      - name: Upload WAR Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: springboot-war
-          path: target/cicd.war
+    Write-Host "Starting Tomcat..."
+    & "$tomcatHome\bin\startup.bat"
 
-  deploy:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: self-hosted
-
-    steps:
-      - name: Download WAR
-        uses: actions/download-artifact@v4
-        with:
-          name: springboot-war
-
-      - name: Deploy to Tomcat
-        run: |
-          $tomcatWebapps = "D:\Softwares\apache-tomcat-11.0.22\webapps"
-          $warPath = "$tomcatWebapps\cicd.war"
-          $explodedPath = "$tomcatWebapps\cicd"
-
-          Write-Host "Stopping Tomcat service..."
-          Stop-Service -Name "Tomcat11" -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 2
-
-          Write-Host "Removing old deployment..."
-          Remove-Item -Path $warPath -Force -ErrorAction SilentlyContinue
-          Remove-Item -Path $explodedPath -Recurse -Force -ErrorAction SilentlyContinue
-
-          Write-Host "Copying new WAR..."
-          Copy-Item -Path "cicd.war" -Destination $warPath
-
-          Write-Host "Starting Tomcat service..."
-          Start-Service -Name "Tomcat11" -ErrorAction SilentlyContinue
-          Write-Host "Deployment complete"
+    Write-Host "Deployment completed successfully."
