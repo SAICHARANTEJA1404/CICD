@@ -19,17 +19,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Compile and Build
-        run: mvn clean compile
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-      - name: Run Unit Tests
-        run: mvn test
-
-      - name: Generate JaCoCo Coverage
-        run: mvn jacoco:report
-
-      - name: Package Application
-        run: mvn package -DskipTests
+      - name: Build, Test & Package
+        run: mvn verify
 
       - name: Upload JaCoCo Report
         uses: actions/upload-artifact@v4
@@ -41,13 +40,36 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: springboot-jar
-          path: target/*.jar
+          path: target/app.jar
 
-      - name: Deploy
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo "Starting Deployment..."
-          mkdir deployment
-          cp target/*.jar deployment/
-          ls -la deployment
-          echo "Deployment Successful"
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: springboot-jar
+
+      - name: Copy JAR to Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "app.jar"
+          target: "/app/ACS/apache-tomcat-10.1.50/webapps/cicd/"
+
+      - name: Restart Application
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd /app/ACS/apache-tomcat-10.1.50/webapps/cicd
+            pkill -f 'app.jar' || true
+            sleep 2
+            nohup java -jar app.jar > app.log 2>&1 &
