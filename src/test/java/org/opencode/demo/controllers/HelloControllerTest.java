@@ -11,7 +11,7 @@ class HelloControllerTest {
         HelloController controller = new HelloController();
 
         assertEquals(
-                "Hello World",
+                "Hello Charan Teja",
                 controller.hello()
         );
     }
